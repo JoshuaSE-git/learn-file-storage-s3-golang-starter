@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,6 +49,20 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer file.Close()
 
 	mediaType := fileHeader.Header.Get("Content-Type")
+	format, _, err := mime.ParseMediaType(mediaType)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to parse media type", err)
+		return
+	}
+
+	validFmt := map[string]struct{}{
+		"image/jpeg": {},
+		"image/png":  {},
+	}
+	if _, ok := validFmt[format]; !ok {
+		respondWithError(w, http.StatusBadRequest, "Invalid image format", err)
+		return
+	}
 
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -58,7 +75,9 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	ext := strings.Split(mediaType, "/")[1]
-	fileName := video.ID.String() + "." + ext
+	b := make([]byte, 32)
+	rand.Read(b)
+	fileName := base64.RawURLEncoding.EncodeToString(b) + "." + ext
 	path := filepath.Join(cfg.assetsRoot, fileName)
 
 	newFile, err := os.Create(path)
